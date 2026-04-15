@@ -12,19 +12,21 @@ created: 2026-04-15
 - `[[Medallion Architecture]]` — padrão bronze/silver/gold
 - `[[dbt Architecture]]` — pipeline Capra (raw → staging → intermediate → marts)
 
-## Backend
-- _(a migrar)_ Strangler Fig Migration — TS → Rust
-- _(a migrar)_ Auth Flow JWKS — validação de token via JWKS
-- _(a migrar)_ Multi-stage Docker Build — build eficiente pra Rust
-- _(a migrar)_ Blue-Green Deploy — zero downtime
+## Backend (bode-api)
+- `[[Strangler Fig Migration]]` — TS → Rust incremental
+- `[[Auth Flow JWKS]]` — validação de token via JWKS (ES256)
+- `[[Crate Boundaries]]` — regras de separação entre crates Rust
+- `[[Multi-stage Docker Build]]` — build eficiente pra Rust
+- `[[Blue-Green Deploy]]` — zero downtime
+- `[[Two-pipeline Testing Strategy]]` — unit CI + integration homolog
 
 ## Observability
-- _(a migrar)_ Structured Logging — JSON condicional dev/prod
-- _(a migrar)_ Request ID Propagation — x-request-id end-to-end
+- `[[Structured Logging]]` — JSON condicional dev/prod
+- `[[Request ID Propagation]]` — x-request-id end-to-end
 
-## Frontend
-- _(a migrar)_ Adapter Pattern — abstração de fonte de dados (capra-ui)
-- _(a migrar)_ Action Bus — pub/sub entre componentes (capra-ui)
+## Frontend (capra-ui)
+- _(a migrar)_ Adapter Pattern — abstração de fonte de dados
+- _(a migrar)_ Action Bus — pub/sub entre componentes
 - _(a migrar)_ Component Categories — analytic/layout/ui
 
 ## Cross-cutting
