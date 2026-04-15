@@ -1,0 +1,24 @@
+# Obsidian — workspace and cache (per-device, not shared)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/workspace.json.backup
+.obsidian/cache
+.obsidian/*.json.tmp
+
+# Keep: .obsidian/plugins/, .obsidian/themes/, .obsidian/snippets/, .obsidian/app.json
+# Keep: .obsidian/core-plugins.json, .obsidian/community-plugins.json
+# (config portátil entre devices)
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+
+# Trash (Obsidian's trash, not system)
+.trash/
