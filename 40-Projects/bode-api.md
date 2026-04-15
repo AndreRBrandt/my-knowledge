@@ -68,9 +68,12 @@ O bode-api implementa o modelo RBAC da plataforma:
 - Dockerfile, docker-compose, CI com 6 quality gates, 49 testes, 92.54% coverage, JSON logging, request ID
 
 **Fase 2 — Pipeline de deploy:** 🔄 Em andamento
-- Story #35 — Deploy homolog (automático)
-- Story #36 — Deploy prod (blue-green)
-- Tasks: #37 workflow homolog, #38 workflow prod, #39 script blue-green, #40 script rollback, #41 graceful shutdown, #42 smoke tests
+- ✅ #41 Graceful shutdown (PR #44 merged 2026-04-15)
+- 📋 **Plano expandido:** `[[bode-api Phase 2 Deploy Plan]]` (DRAFT — aguardando validação)
+  - Story #35 — Deploy homolog (automático)
+  - Story #36 — Deploy prod (blue-green)
+  - Tasks abertas: #37 workflow homolog, #38 workflow prod, #39 script blue-green, #40 script rollback, #42 smoke tests
+  - **Novos epics (modern practices):** VPS provisioning, Cosign signing, release-please, GH Environments + reviewer, Observability MVP
 
 **Fase 3 — Features incrementais:** Pendente
 
