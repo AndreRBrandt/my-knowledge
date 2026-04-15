@@ -31,8 +31,13 @@ This plan turns those into a structured Epic → Story → Task → DoD breakdow
 | D4 | **Container image signing (Cosign)** | Sign at build, verify before deploy. Aligns with SLSA Level 2+. Defends against registry compromise. | ADR-BODE-013 |
 | D5 | **Automated release with `release-please`** | Reads Conventional Commits → opens PR with semver bump + CHANGELOG. Merge that PR = tag = deploy. Removes manual versioning toil. | ADR-BODE-014 |
 | D6 | **Blue-green via Traefik labels** (mesma label, drain por unhealthy) | Modernizes ADR-BODE-004's strategy: instead of script orchestrating two routes, both colors share labels → Traefik load-balances → forcing old color unhealthy drains traffic naturally. Simpler, more robust. | ADR-BODE-015 (refines 004) |
-| D7 | **Observability MVP from day 1** | ADR-BODE-010 deferred metrics. Blue-green without golden signals = "deploy and pray". Start with: uptime monitoring (free tier) + `/metrics` endpoint + basic Grafana. Defer full Prometheus stack on VPS until justified. | ADR-BODE-016 (replaces 010) |
+| D7 | **Observability stack from day 1: métricas + logs** | ADR-BODE-010 deferred metrics. Blue-green without golden signals = "deploy and pray". Stack: `/metrics` Prometheus endpoint + uptime monitoring + **Loki+Grafana pra logs em tempo real** (telemetria). | ADR-BODE-016 (replaces 010) |
 | D8 | **Deploy directory `/home/bode-api/`** | Matches existing pattern `/home/bode-analytics/`. Compose + .env.homolog + .env.prod live there. | (convention, no ADR) |
+| D9 | **Metadata-driven domain architecture** (princípio constitucional) | Toda funcionalidade nova tem entidade de domínio explícita (tabela + repository) + CRUD via API. Filtro de PR: "isso poderia ser configurado via admin sem mexer no código?". Permite produtificação futura como low-code para não-técnicos (Eixo 3 da migração). | ADR-BODE-017 |
+| D10 | **Notification adapter pattern (Teams + email hoje)** | Alertas (Epic H1, J) emitidos via trait `Notifier` com adapters concretos (`TeamsAdapter`, `EmailAdapter`). Adicionar Slack/Telegram no futuro = só nova impl. | (parte do ADR-017) |
+| D11 | **Staging DB seed via script puxando view Teknisa** | Começa vazio. Script pull de view exposta no Postgres do Teknisa (banco prod) → bode_homolog. Reutiliza acesso já existente, dado real com volume real. PII: tratamento decidido na implementação (TBD). | (parte do ADR-011) |
+| D12 | **release-please: workspace versionado como um** | Bode-api é app deployável (não library). 1 versão, 1 tag, 1 CHANGELOG. Per-crate só faria sentido se publicasse em crates.io. | (parte do ADR-014) |
+| D13 | **Cosign keystore: GitHub Secrets** | Adequado pro porte (single VPS, time pequeno, app interno). KMS é overkill sem requisito de compliance. | (parte do ADR-013) |
 
 ## Real VPS state (verified S237)
 
@@ -64,16 +69,17 @@ I. Repository abstractions (TD-002) ──────────────�
                                                                         │
 F. Cosign signing ──────────────────────────────────────► (gated into D + E workflows)
 G. release-please ──────────────────────────────────────► (orthogonal, parallel)
-H. Observability MVP ───────────────────────────────────► (orthogonal, parallel)
+H. Observability MVP (metrics) ─────────────────────────► (orthogonal, parallel)
+J. Telemetry stack (Loki+Grafana) ──────────────────────► (orthogonal, parallel — alimenta J2 alerts via H1 too)
 ```
 
-A and B are independent prerequisites. C depends on both. D depends on A+B+C. **I (repository abstractions / TD-002) is hard prerequisite for E** — prod must ship with the abstraction in place so the future Supabase→self-hosted migration doesn't require re-deploy. F/G/H parallelize but should be ready before E ships.
+A and B are independent prerequisites. C depends on both. D depends on A+B+C. **I (repository abstractions / TD-002) is hard prerequisite for E**. F/G/H/J parallelize. **A4 (Teknisa seed) depende de A2 + I** — sem trait `DataSourceRepository` o seed não fica metadata-driven (D9).
 
 ### Recommended sequencing
-1. **Sprint 1:** A + B + I (parallel) → C → unblocks deploy
-2. **Sprint 2:** D (homolog working) + start G+H (parallel, low blast radius)
-3. **Sprint 3:** E (blue-green prod) + F (Cosign) — couple them so prod ships signed AND with abstraction
-4. **Sprint 4:** harden H (observability dashboards), retro
+1. **Sprint 1:** A1+A2+A3 + B + I (paralelo) → C → unblocks deploy
+2. **Sprint 2:** D (homolog funcionando) + A4 (Teknisa seed) + começa G+H+J (paralelo, baixo blast radius)
+3. **Sprint 3:** E (blue-green prod) + F (Cosign) — acopla pra prod sair assinado E com abstraction
+4. **Sprint 4:** harden H+J (dashboards, alertas, retention), retro
 
 ---
 
@@ -86,19 +92,27 @@ A and B are independent prerequisites. C depends on both. D depends on A+B+C. **
 - **A1.3** Create `.env.homolog` with staging credentials (manual, never in git)
 - **DoD:** `ls -la /home/bode-api/` shows compose file + .env.homolog with correct perms (`.env.homolog` mode 600)
 
-### Story A2 — Staging DB on VPS + Supabase Auth Free project (D1, revised)
+### Story A2 — Staging DB on VPS + Supabase Auth Free + Teknisa seed script (D1, D11)
 - **A2.1** Inventory `bode-postgres-dev` (postgres:16-alpine, host port 5433, on `public` net?) — confirm reachable from inside docker network and from runner
 - **A2.2** Create database `bode_homolog` inside `bode-postgres-dev` (separate from any other dev DBs there); create role `bode_api_homolog` with limited privileges
 - **A2.3** Apply schema: dump structure from prod Supabase (`pg_dump --schema-only`), restore into `bode_homolog`
-- **A2.4** Seed strategy decision (open question 1, revised): subset of prod data anonymized via `pg_dump | sed`-style scrub, fully synthetic via factory, or empty start?
-- **A2.5** Create new Supabase project `bode-auth-staging` (Free tier — projects são free, só DB Pro é pago) **only for Auth / JWKS**
-- **A2.6** Capture credentials → `.env.homolog`:
+- **A2.4** Create new Supabase project `bode-auth-staging` (Free tier — projects são free, só DB Pro é pago) **only for Auth / JWKS**
+- **A2.5** Capture credentials → `.env.homolog`:
   - `DATABASE_URL=postgres://bode_api_homolog:***@bode-postgres-dev:5432/bode_homolog` (internal docker network)
   - `SUPABASE_AUTH_URL=https://<bode-auth-staging>.supabase.co`
   - `SUPABASE_ANON_KEY=...`
   - JWKS endpoint resolved from auth URL
-- **A2.7** Bridge networking: ensure `bode-postgres-dev` and `bode-api-v2-homolog` share a docker network (likely add to `backend`)
+- **A2.6** Bridge networking: ensure `bode-postgres-dev` and `bode-api-v2-homolog` share a docker network (likely add to `backend`)
 - **DoD:** Rust binary connects to `bode_homolog` from inside VPS network, `/api/v2/health/db` returns 200; auth login flow works against staging Auth project
+
+### Story A4 — Teknisa seed script (D11)
+- **A4.1** Identify view(s) on Teknisa Postgres a serem usadas (TBD operacional — André tem o acesso/lista)
+- **A4.2** Decisão de PII: filtra na origem (view só com colunas safe), scrub no destino (script lava após insert), ou aceita real e restringe acesso ao staging
+- **A4.3** Script Rust em `bode-sync` (`bin/seed_homolog.rs`) que conecta no Teknisa via env vars, lê das views, escreve em `bode_homolog`
+- **A4.4** Modelo metadata-driven (D9): script lê config YAML/JSON tipo `[{view: 'fato_vendas', target_table: 'gold_vendas', upsert_on: 'id'}, ...]` — não hardcodar mappings
+- **A4.5** Modo manual: rodar `cargo run -p bode-sync --bin seed_homolog -- --tables vendas,produtos`
+- **A4.6** Modo agendado (futuro): cron 1x/dia ou on-demand via admin (quando builder existir)
+- **DoD:** `cargo run -p bode-sync --bin seed_homolog` popula `bode_homolog` com dados reais do Teknisa; tabelas têm linhas; `/api/v2/health/db` ainda 200
 
 ### Story A3 — GHCR org packages
 - **A3.1** Verify `bodedono` org has Container Registry enabled
@@ -271,12 +285,48 @@ A and B are independent prerequisites. C depends on both. D depends on A+B+C. **
 
 ---
 
-## Open questions for André
+## Epic J — Telemetria: logs em tempo real (Loki + Grafana, D7)
+**Goal:** ver logs estruturados da API em tempo real + buscar histórico + alertar em padrões.
 
-1. **Staging DB seed strategy** (D1 revised — DB now self-hosted on VPS): anonymized subset of prod via dump+scrub, fully synthetic via factories, ou começa vazio e aceita "thin" homolog testing inicialmente?
-2. **Alert routing:** email só, Slack webhook (qual workspace?), Telegram bot?
-3. **release-please scope:** workspace versionado como um (recomendado pra app-style), per-crate (npm-style)?
-4. **Cosign keystore:** GitHub Secrets (simples) ou KMS (overkill agora)?
+### Story J1 — Loki + Grafana stack
+- **J1.1** `docker-compose.yml` em `/home/infra/observability/` com `grafana/loki` + `grafana/grafana` + `grafana/promtail`
+- **J1.2** Promtail coleta logs do `bode-api-v2-homolog` e `bode-api-v2-prod` via docker socket-proxy
+- **J1.3** Loki indexa por labels (`container`, `environment`, `level`)
+- **J1.4** Grafana datasource pra Loki, dashboard inicial: tail-f, latência por rota (parseando log), errors recentes
+- **J1.5** Traefik route privada `grafana.bodedono.com.br` (não público — atrás de auth básica ou IP whitelist)
+- **DoD:** abrir `grafana.bodedono.com.br` mostra logs do bode-api em tempo real, query LogQL `{environment="prod", level="error"}` retorna últimos erros
+
+### Story J2 — Alertas via adapter (D10)
+- **J2.1** Trait `Notifier` em `bode-core`: `async fn send(&self, alert: Alert) -> Result<()>`
+- **J2.2** Impls em `bode-server`: `TeamsAdapter` (webhook do Teams), `EmailAdapter` (SMTP — configurar provider, ex: SendGrid free tier ou Resend)
+- **J2.3** Grafana Alerting → webhook → endpoint `/internal/alert` no bode-api → roteia pros notifiers configurados
+- **J2.4** Configuração de qual adapter pra qual alerta vive em DB (metadata-driven, D9): tabela `alert_routes (severity, channel, target)`
+- **DoD:** criar alerta no Grafana ("error rate > 5% por 5min") → dispara → chega no Teams + email; trocar adapter = só editar tabela
+
+### Story J3 — Retention + storage
+- **J3.1** Loki configurado com retention 30d (homolog) / 90d (prod)
+- **J3.2** Storage: filesystem local (volume mount) — sem object storage por enquanto (decidir migração quando passar de N GB)
+- **DoD:** logs antigos são compactados/removidos automaticamente conforme política
+
+---
+
+## Open questions — RESOLVED (2026-04-15)
+
+Todas as decisões locked. Operacionais TBD ficam pra implementação:
+
+| Pergunta | Decisão |
+|---|---|
+| Seed staging | Script de pull de view Teknisa → bode_homolog (D11). Detalhes (qual view, PII handling) decididos quando atacar Epic A4 |
+| Alert routing | Teams + email com adapter pattern (D10). Slack/Telegram = nova impl no futuro |
+| release-please scope | Workspace versionado como um (D12) |
+| Cosign keystore | GitHub Secrets (D13) |
+
+## TBDs operacionais (decididos quando atacar a story)
+
+- **A4.1** Qual view específica do Teknisa? (André sabe)
+- **A4.2** PII handling — filtra na origem, scrub no destino, ou aceita real
+- **J1.5** Auth do Grafana — basic auth, IP whitelist, ou Supabase Auth integrado
+- **J2.2** SMTP provider — SendGrid free, Resend, ou SMTP do Teams
 
 ## What this plan does NOT cover (out of scope for Phase 2)
 
@@ -285,6 +335,7 @@ A and B are independent prerequisites. C depends on both. D depends on A+B+C. **
 - Outros tech debt items em `docs/TECH_DEBT.md` (TD-001 paginação, TD-003 tarpaulin) — TD-002 PROMOVIDO pra Epic I deste plano
 - **Frontend / capra-ui improvements** — workstream separado, ver `[[capra-ui Improvements Plan]]` (placeholder)
 - **Self-hosted DB + auth migration end-to-end (Eixo 2 completo)** — fase futura. Phase 2 só ENCAIXA AS FUNDAÇÕES (Epic A2 staging em Postgres VPS, Epic I trait abstractions)
+- **Admin builder / low-code UI (Eixo 3)** — fase futura. Phase 2 prepara a fundação metadata-driven (D9, ADR-017) que vai permitir construir o builder em cima depois sem rewrite.
 
 ## Acceptance for "Phase 2 complete"
 
@@ -292,6 +343,8 @@ A and B are independent prerequisites. C depends on both. D depends on A+B+C. **
 - [ ] Tag `v*` requires manual approval, then blue-green deploys to prod with zero downtime (E)
 - [ ] All deployed images signed and verified (F)
 - [ ] Releases versioned and CHANGELOG generated automatically (G)
-- [ ] Outage in homolog or prod alerts within 2min (H1)
+- [ ] Outage in homolog or prod alerts within 2min (H1) via Teams + email
+- [ ] Logs em tempo real visíveis em Grafana (J)
 - [ ] Repository abstractions resolved (I, TD-002 → Resolved)
-- [ ] All 6 ADRs (011-016) accepted and merged
+- [ ] Toda nova feature passa no filtro "isso poderia ser CRUDado via admin?" (D9 / ADR-017 enforcement)
+- [ ] All 7 ADRs (011-017) accepted and merged
