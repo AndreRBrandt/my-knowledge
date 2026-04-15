@@ -67,13 +67,19 @@ O bode-api implementa o modelo RBAC da plataforma:
 **Fase 1 — Fundação deploy:** ✅ Completa (PR #43 merged 2026-04-14)
 - Dockerfile, docker-compose, CI com 6 quality gates, 49 testes, 92.54% coverage, JSON logging, request ID
 
-**Fase 2 — Pipeline de deploy:** 🔄 Em andamento
+**Fase 2 — Pipeline de deploy + foundation:** 🔄 Em andamento
 - ✅ #41 Graceful shutdown (PR #44 merged 2026-04-15)
-- 📋 **Plano expandido:** `[[bode-api Phase 2 Deploy Plan]]` (DRAFT — aguardando validação)
-  - Story #35 — Deploy homolog (automático)
-  - Story #36 — Deploy prod (blue-green)
-  - Tasks abertas: #37 workflow homolog, #38 workflow prod, #39 script blue-green, #40 script rollback, #42 smoke tests
-  - **Novos epics (modern practices):** VPS provisioning, Cosign signing, release-please, GH Environments + reviewer, Observability MVP
+- 📋 **Plano expandido:** `[[bode-api Phase 2 Deploy Plan]]` (decisões locked, aguardando criação de issues)
+  - Issues GH antigas: #35-#42 (deploy homolog/prod, blue-green, rollback, smoke)
+  - **11 epics** (A-K): VPS provisioning, router /api/v2, compose fixes, deploy homolog, deploy prod, Cosign, release-please, observability metrics, repository abstractions, telemetry Loki, **Data Extraction Engine (Teknisa BI port)**
+  - **7 ADRs novas** (011-017) incluindo Metadata-Driven Domain (constitucional)
+
+## Asset relacionado: `[[teknisa-crawler]]`
+Crawler Python existente — será portado pra Rust no Epic K como Data Extraction Engine genérica. Auth Zeedhi + 5 queries validadas com sample CSV (regression fixtures).
+
+## Architecture concepts derivados
+- `[[Teknisa BI Auth Flow]]` — Zeedhi auth pattern
+- `[[Data Extraction Engine]]` — design da engine Rust em bode-sync
 
 **Fase 3 — Features incrementais:** Pendente
 

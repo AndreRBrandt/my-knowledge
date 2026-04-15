@@ -67,19 +67,24 @@ B. Router /api/v2 ──────┘                                         
                                                                         │
 I. Repository abstractions (TD-002) ────────────────────────────────────┤──► E. Prod Pipeline (Blue-Green)
                                                                         │
+K. Data Extraction Engine (Teknisa BI) ──► K8 seed_homolog ──┐          │
+                                                             │          │
+                                                             ▼          │
+                               (popula bode_homolog) ────────┴──────────┤
+                                                                        │
 F. Cosign signing ──────────────────────────────────────► (gated into D + E workflows)
 G. release-please ──────────────────────────────────────► (orthogonal, parallel)
 H. Observability MVP (metrics) ─────────────────────────► (orthogonal, parallel)
-J. Telemetry stack (Loki+Grafana) ──────────────────────► (orthogonal, parallel — alimenta J2 alerts via H1 too)
+J. Telemetry stack (Loki+Grafana) ──────────────────────► (orthogonal, parallel — engine K9 emite pra ele)
 ```
 
-A and B are independent prerequisites. C depends on both. D depends on A+B+C. **I (repository abstractions / TD-002) is hard prerequisite for E**. F/G/H/J parallelize. **A4 (Teknisa seed) depende de A2 + I** — sem trait `DataSourceRepository` o seed não fica metadata-driven (D9).
+A and B are independent prerequisites. C depends on both. D depends on A+B+C. **I (repository abstractions / TD-002) is hard prerequisite for E**. F/G/H/J parallelize. **K (Engine + Teknisa BI) é grande mas paralelo** — só K8 (seed_homolog) bloqueia validação completa de homolog (D ship sem dado real é deploy-only validation).
 
 ### Recommended sequencing
-1. **Sprint 1:** A1+A2+A3 + B + I (paralelo) → C → unblocks deploy
-2. **Sprint 2:** D (homolog funcionando) + A4 (Teknisa seed) + começa G+H+J (paralelo, baixo blast radius)
-3. **Sprint 3:** E (blue-green prod) + F (Cosign) — acopla pra prod sair assinado E com abstraction
-4. **Sprint 4:** harden H+J (dashboards, alertas, retention), retro
+1. **Sprint 1:** A1+A2+A3 + B + I + **K1+K2+K3 (engine core + auth + 1º conector)** (paralelo) → C → unblocks deploy
+2. **Sprint 2:** D (homolog funcionando) + **K4+K5+K6 (outputs + queries + regression test)** + começa G+H+J (paralelo, baixo blast radius)
+3. **Sprint 3:** E (blue-green prod) + F (Cosign) + **K7+K8 (CLI extract + seed_homolog roda em homolog real)**
+4. **Sprint 4:** harden H+J + **K9 (logging end-to-end via Loki)** + retro
 
 ---
 
@@ -105,14 +110,12 @@ A and B are independent prerequisites. C depends on both. D depends on A+B+C. **
 - **A2.6** Bridge networking: ensure `bode-postgres-dev` and `bode-api-v2-homolog` share a docker network (likely add to `backend`)
 - **DoD:** Rust binary connects to `bode_homolog` from inside VPS network, `/api/v2/health/db` returns 200; auth login flow works against staging Auth project
 
-### Story A4 — Teknisa seed script (D11)
-- **A4.1** Identify view(s) on Teknisa Postgres a serem usadas (TBD operacional — André tem o acesso/lista)
-- **A4.2** Decisão de PII: filtra na origem (view só com colunas safe), scrub no destino (script lava após insert), ou aceita real e restringe acesso ao staging
-- **A4.3** Script Rust em `bode-sync` (`bin/seed_homolog.rs`) que conecta no Teknisa via env vars, lê das views, escreve em `bode_homolog`
-- **A4.4** Modelo metadata-driven (D9): script lê config YAML/JSON tipo `[{view: 'fato_vendas', target_table: 'gold_vendas', upsert_on: 'id'}, ...]` — não hardcodar mappings
-- **A4.5** Modo manual: rodar `cargo run -p bode-sync --bin seed_homolog -- --tables vendas,produtos`
-- **A4.6** Modo agendado (futuro): cron 1x/dia ou on-demand via admin (quando builder existir)
-- **DoD:** `cargo run -p bode-sync --bin seed_homolog` popula `bode_homolog` com dados reais do Teknisa; tabelas têm linhas; `/api/v2/health/db` ainda 200
+### Story A4 — Seed homolog (delegada para Epic K)
+**REVISADO:** acesso ao Teknisa NÃO é via Postgres view direto — é via API HTTP autenticada (Zeedhi/QueryRunner) com lógica de auth, session token, headers OAuth. **Já existe** o `[[teknisa-crawler]]` (Python, validado, ~5 queries com sample CSV) que faz isso.
+
+A seed do homolog foi extraída pra **Epic K (Data Extraction Engine)**, story K8 — usa a engine genérica em Rust que substitui (e generaliza) o crawler Python.
+
+A4 propriamente dita só fica como dependência: "K8 concluído → seed funciona em homolog". Sem stories próprias.
 
 ### Story A3 — GHCR org packages
 - **A3.1** Verify `bodedono` org has Container Registry enabled
@@ -310,6 +313,85 @@ A and B are independent prerequisites. C depends on both. D depends on A+B+C. **
 
 ---
 
+## Epic K — Data Extraction Engine v1 (Teknisa BI) — `bode-sync`
+**Goal:** engine de extração genérica e configurável em Rust, com Teknisa BI como primeiro conector. Substitui (e generaliza) o `[[teknisa-crawler]]` Python.
+
+**Identidade do crate `bode-sync`:** "engine de extração + outras tools internas". Não vira repo separado por enquanto, mas é projetado standalone (binários CLI rodáveis fora do contexto bode-api).
+
+**Source:** discussão S237 (2026-04-15). Princípios:
+- Connector trait + Query como entidade de primeira classe (D9 / ADR-017)
+- CLI standalone — usável por outros projetos (cron, terminal, futuramente admin builder)
+- Sample CSVs do Python crawler viram **regression fixtures** dos testes Rust (critério: "port retorna o mesmo dado da versão Python")
+- Logging estruturado por run (tracing spans, correlatable nos dashboards do Epic J)
+
+### Story K1 — Core traits em `bode-core` + impls básicas em `bode-sync`
+- **K1.1** Trait `Connector` em `bode-core/src/extraction/connector.rs`: `async fn authenticate`, `async fn run_query(query: &Query) -> Result<Rows>`, `fn name() -> &'static str`
+- **K1.2** Struct `Query` em `bode-core/src/extraction/query.rs`: `id`, `connector_name`, `payload` (enum: SQL, ApiCall, etc.), `output_schema`
+- **K1.3** Struct `Rows` (resultado tipado): vetor de mapas `column_name → Value`
+- **K1.4** Trait `Output` em `bode-core/src/extraction/output.rs`: `async fn write(rows: Rows) -> Result<usize>` (retorna # rows escritas)
+- **K1.5** Struct `Extractor` em `bode-sync/src/extractor.rs`: orquestra `Connector + Query → Output`, emite tracing spans
+- **DoD:** `cargo check -p bode-core` e `-p bode-sync` verde; traits `dyn`-compatible
+
+### Story K2 — Auth Zeedhi (port `auth.py`)
+- **K2.1** Módulo `bode-sync/src/auth/zeedhi.rs`: login (`POST /backend_login/index.php/login`), parse response, build headers (`OAuth-Token`, `OAuth-Hash`, `OAuth-Project`, `Cookie: PHPSESSID`)
+- **K2.2** Cache de sessão TTL (`session_bi.json` formato compatível com Python — facilita rollback) — config TTL via env
+- **K2.3** Re-login automático quando 401/403 ou expired
+- **K2.4** Credenciais via env vars (`TEKNISA_BI_USER`, `TEKNISA_BI_PASS`, `TEKNISA_BI_URL`) — **NUNCA hardcoded**
+- **DoD:** `bode_sync::auth::zeedhi::get_session()` retorna sessão válida; cache hit não chama servidor novamente até expirar
+
+### Story K3 — Connector Teknisa BI (port `query_runner.py`)
+- **K3.1** Struct `TeknisaBiConnector` em `bode-sync/src/connectors/teknisa_bi.rs`
+- **K3.2** `impl Connector for TeknisaBiConnector`
+- **K3.3** `run_query` monta payload (`POST /backend/index.php/runQuery`), parse `dataset.queryResult`, mapa pra `Rows`
+- **K3.4** Tratamento de erro: HTTP failures, JSON parse errors, queries com erro Oracle → `CoreError` apropriado
+- **K3.5** Timeout configurável (default 120s) + retry com backoff exponencial em erros transientes
+- **DoD:** `connector.run_query(simple_query)` retorna rows reais do Teknisa BI
+
+### Story K4 — Output adapters (Postgres + stdout JSON/CSV)
+- **K4.1** `PostgresOutput` em `bode-sync/src/outputs/postgres.rs`: recebe `target_table` + `upsert_on` (colunas pra `ON CONFLICT`), faz `INSERT ... ON CONFLICT DO UPDATE`
+- **K4.2** `JsonOutput` em `bode-sync/src/outputs/json.rs`: serializa rows pra stdout ou arquivo (ad-hoc exploration)
+- **K4.3** `CsvOutput` em `bode-sync/src/outputs/csv.rs`: idem com CSV
+- **K4.4** Output selecionado em runtime via flag CLI ou config
+- **DoD:** mesma query roteada pra cada output produz resultado correto; Postgres upsert idempotente
+
+### Story K5 — Migrar 5 queries Python pra `bode-sync/queries/teknisa/vendas/`
+- **K5.1** Copiar `q1_resumo_filial.sql`, `q2_top_produtos.sql`, `q3_turno.sql`, `q4_ticket_medio.sql`, `q5_detalhe_itens.sql` do crawler Python pra `bode-sync/queries/teknisa/vendas/`
+- **K5.2** Para cada query, copiar `amostra.csv` como `<query>.fixture.csv` em `bode-sync/tests/fixtures/teknisa/vendas/`
+- **K5.3** Adicionar metadata YAML por query: `<query>.meta.yaml` com `{id, connector, output_schema, target_table?, upsert_on?}`
+- **DoD:** estrutura no lugar; `bode-sync` carrega queries via `Query::from_file(path)`
+
+### Story K6 — Regression test contra fixtures Python
+- **K6.1** Test integration `bode-sync/tests/teknisa_bi_regression.rs` — para cada query em `queries/teknisa/`, executa via Rust, compara com fixture CSV
+- **K6.2** Comparação row-equality (não byte) — tolera ordering, formatação numérica diferente
+- **K6.3** Skipped por default em CI (precisa credenciais reais); roda manualmente via `cargo test --features teknisa-bi-live`
+- **K6.4** Modo "snapshot update": flag pra regenerar fixtures se Teknisa mudou dado
+- **DoD:** `cargo test --features teknisa-bi-live` passa pras 5 queries com dados de hoje
+
+### Story K7 — CLI genérica `extract`
+- **K7.1** Binary `bode-sync/src/bin/extract.rs`
+- **K7.2** Args: `--connector teknisa-bi --query vendas/q1_resumo_filial --output postgres|json|csv [--target-table X] [--params key=val,...]`
+- **K7.3** Substituição de parâmetros nas queries (ex: `:data_inicio` → CLI flag)
+- **K7.4** Logging humano-readable em terminal, JSON em scripts (flag `--log-format`)
+- **K7.5** Exit codes apropriados (0 sucesso, 1 erro de query, 2 erro de auth, etc.)
+- **DoD:** `cargo run --bin extract -- --connector teknisa-bi --query vendas/q1_resumo_filial --output json` imprime JSON com dados
+
+### Story K8 — CLI `seed_homolog` (substitui Story A4 original)
+- **K8.1** Binary `bode-sync/src/bin/seed_homolog.rs` em cima do `extract`
+- **K8.2** Lê config `bode-sync/config/seed_homolog.yaml`: lista de `{query: 'vendas/q1', target_table: 'gold_vendas', upsert_on: 'id'}`
+- **K8.3** Para cada entry: roda extract → escreve no `bode_homolog`
+- **K8.4** Modo `--dry-run` (mostra o que faria sem escrever)
+- **K8.5** Logs estruturados por query: rows extraídas, rows escritas, duração, erros
+- **DoD:** `cargo run --bin seed_homolog -- --env homolog` popula `bode_homolog` com dados reais do Teknisa; idempotente (rodar 2x não duplica)
+
+### Story K9 — Logging estruturado + observabilidade
+- **K9.1** Tracing span por execução: `extraction.run` com fields `connector`, `query_id`, `output`, `rows`, `duration_ms`, `status`
+- **K9.2** Erros emitem context completo (query SQL truncada, HTTP status, payload — sem credenciais)
+- **K9.3** Logs em formato compatível com Loki (Epic J): JSON com labels indexados
+- **K9.4** Run history opcional persistida em DB (tabela `extraction_runs` — alimenta dashboards de monitoring no futuro)
+- **DoD:** rodar `seed_homolog` e ver os spans completos no Grafana/Loki; todas queries têm span individual
+
+---
+
 ## Open questions — RESOLVED (2026-04-15)
 
 Todas as decisões locked. Operacionais TBD ficam pra implementação:
@@ -346,5 +428,6 @@ Todas as decisões locked. Operacionais TBD ficam pra implementação:
 - [ ] Outage in homolog or prod alerts within 2min (H1) via Teams + email
 - [ ] Logs em tempo real visíveis em Grafana (J)
 - [ ] Repository abstractions resolved (I, TD-002 → Resolved)
+- [ ] **Data Extraction Engine v1 funcional: CLI `extract` roda queries do Teknisa BI em modo ad-hoc; `seed_homolog` popula `bode_homolog` com dados reais; regression tests verde contra fixtures Python (K)**
 - [ ] Toda nova feature passa no filtro "isso poderia ser CRUDado via admin?" (D9 / ADR-017 enforcement)
 - [ ] All 7 ADRs (011-017) accepted and merged

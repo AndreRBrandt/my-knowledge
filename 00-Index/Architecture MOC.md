@@ -11,6 +11,8 @@ created: 2026-04-15
 ## Data Pipeline
 - `[[Medallion Architecture]]` — padrão bronze/silver/gold
 - `[[dbt Architecture]]` — pipeline Capra (raw → staging → intermediate → marts)
+- `[[Data Extraction Engine]]` — engine genérica em Rust (bode-sync) — connectors + queries metadata-driven
+- `[[Teknisa BI Auth Flow]]` — auth Zeedhi (PHPSESSID + OAuth-Token + OAuth-Hash + OAuth-Project)
 
 ## Backend (bode-api)
 - `[[Strangler Fig Migration]]` — TS → Rust incremental
