@@ -25,7 +25,7 @@ This plan turns those into a structured Epic → Story → Task → DoD breakdow
 
 | # | Decision | Rationale | Will become ADR |
 |---|---|---|---|
-| D1 | **Separate Supabase project for staging** | "Near-prod, isolated, real" only meaningful with isolated DB. Schema/data parity, no risk of staging traffic touching prod tables. Cost: ~$25/mo (Pro) — accept. | ADR-BODE-011 |
+| D1 | **Staging DB = `bode-postgres-dev` self-hosted on VPS** + **Supabase Auth Free project** for JWKS | $0 marginal cost. Forces app to run against vanilla Postgres → validates ADR-009 abstraction → accelerates Eixo 2 da migração (Supabase → self-hosted). Avoids paying $25/mo for infra that will be ripped out. Auth stays on Supabase Free project (projects são gratuitos, só DB Pro é pago). | ADR-BODE-011 |
 | D2 | **Routes mounted explicitly at `/api/v2/...` in Rust router** | No `stripPrefix` middleware. Trade: small code repetition; Gain: Traefik config simpler, route is what handler sees, easier debug. | (no ADR, document in API_REFERENCE.md) |
 | D3 | **GitHub Environments + required reviewer for prod** | Tag `v*` triggers workflow but waits on manual approval in GH UI. Defends against accidental tag, gives audit trail. Homolog stays auto. | ADR-BODE-012 |
 | D4 | **Container image signing (Cosign)** | Sign at build, verify before deploy. Aligns with SLSA Level 2+. Defends against registry compromise. | ADR-BODE-013 |
@@ -57,20 +57,22 @@ See `[[VPS Infrastructure Status]]` (memory) for full inventory. Key facts for t
 ### Dependency graph
 ```
 A. VPS Provisioning ────┐
-                        ├──► C. Compose Fixes ──► D. Homolog Pipeline ──► E. Prod Pipeline (Blue-Green)
-B. Router /api/v2 ──────┘                                                       │
-                                                                                │
+                        ├──► C. Compose Fixes ──► D. Homolog Pipeline ──┐
+B. Router /api/v2 ──────┘                                               │
+                                                                        │
+I. Repository abstractions (TD-002) ────────────────────────────────────┤──► E. Prod Pipeline (Blue-Green)
+                                                                        │
 F. Cosign signing ──────────────────────────────────────► (gated into D + E workflows)
 G. release-please ──────────────────────────────────────► (orthogonal, parallel)
 H. Observability MVP ───────────────────────────────────► (orthogonal, parallel)
 ```
 
-A and B are independent prerequisites. C depends on both. D depends on A+B+C. E depends on D shipped + GH Environments configured. F/G/H parallelize but should be ready before E ships to truly say we're "modern".
+A and B are independent prerequisites. C depends on both. D depends on A+B+C. **I (repository abstractions / TD-002) is hard prerequisite for E** — prod must ship with the abstraction in place so the future Supabase→self-hosted migration doesn't require re-deploy. F/G/H parallelize but should be ready before E ships.
 
 ### Recommended sequencing
-1. **Sprint 1:** A + B (parallel) → C → unblocks deploy
+1. **Sprint 1:** A + B + I (parallel) → C → unblocks deploy
 2. **Sprint 2:** D (homolog working) + start G+H (parallel, low blast radius)
-3. **Sprint 3:** E (blue-green prod) + F (Cosign) — couple them so prod ships signed
+3. **Sprint 3:** E (blue-green prod) + F (Cosign) — couple them so prod ships signed AND with abstraction
 4. **Sprint 4:** harden H (observability dashboards), retro
 
 ---
@@ -84,12 +86,19 @@ A and B are independent prerequisites. C depends on both. D depends on A+B+C. E 
 - **A1.3** Create `.env.homolog` with staging credentials (manual, never in git)
 - **DoD:** `ls -la /home/bode-api/` shows compose file + .env.homolog with correct perms (`.env.homolog` mode 600)
 
-### Story A2 — Staging Supabase project (D1)
-- **A2.1** Create new Supabase project `bode-staging` (Pro tier or Free decision — see open question 1)
-- **A2.2** Apply schema: dump prod's gold tables structure, recreate in staging
-- **A2.3** Seed strategy decision (open question 2): subset of prod data anonymized, fully synthetic, or empty?
-- **A2.4** Capture `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, JWKS endpoint → into `.env.homolog`
-- **DoD:** Rust binary connects to staging DB, `/api/v2/health/db` returns 200 from local pointing to staging URL
+### Story A2 — Staging DB on VPS + Supabase Auth Free project (D1, revised)
+- **A2.1** Inventory `bode-postgres-dev` (postgres:16-alpine, host port 5433, on `public` net?) — confirm reachable from inside docker network and from runner
+- **A2.2** Create database `bode_homolog` inside `bode-postgres-dev` (separate from any other dev DBs there); create role `bode_api_homolog` with limited privileges
+- **A2.3** Apply schema: dump structure from prod Supabase (`pg_dump --schema-only`), restore into `bode_homolog`
+- **A2.4** Seed strategy decision (open question 1, revised): subset of prod data anonymized via `pg_dump | sed`-style scrub, fully synthetic via factory, or empty start?
+- **A2.5** Create new Supabase project `bode-auth-staging` (Free tier — projects são free, só DB Pro é pago) **only for Auth / JWKS**
+- **A2.6** Capture credentials → `.env.homolog`:
+  - `DATABASE_URL=postgres://bode_api_homolog:***@bode-postgres-dev:5432/bode_homolog` (internal docker network)
+  - `SUPABASE_AUTH_URL=https://<bode-auth-staging>.supabase.co`
+  - `SUPABASE_ANON_KEY=...`
+  - JWKS endpoint resolved from auth URL
+- **A2.7** Bridge networking: ensure `bode-postgres-dev` and `bode-api-v2-homolog` share a docker network (likely add to `backend`)
+- **DoD:** Rust binary connects to `bode_homolog` from inside VPS network, `/api/v2/health/db` returns 200; auth login flow works against staging Auth project
 
 ### Story A3 — GHCR org packages
 - **A3.1** Verify `bodedono` org has Container Registry enabled
@@ -230,19 +239,52 @@ A and B are independent prerequisites. C depends on both. D depends on A+B+C. E 
 
 ---
 
+## Epic I — Repository abstractions (promotes TD-002, prerequisite for Epic E)
+**Goal:** trait-based repository injection so swapping Supabase Auth for self-hosted auth (Eixo 2 da migração) is a config/wiring change, not a rewrite.
+
+**Source:** `bode-api/docs/TECH_DEBT.md` TD-002 — promoted into Phase 2 because:
+- Prod (Epic E) shipping with concrete `SupabaseAuthProvider` baked into handlers locks us in
+- Cost of doing the trait extraction NOW: ~1 day
+- Cost of doing it AFTER prod is on Supabase: re-deploy + risk of behavior change
+
+### Story I1 — Extract `UserRepository` trait in `bode-core`
+- **I1.1** Define `pub trait UserRepository: Send + Sync` with method(s) currently provided by `load_auth_user`
+- **I1.2** Move trait definition to `bode-core/src/repositories/user.rs` (new module)
+- **I1.3** Keep `bode-core` zero-I/O — trait only, no impl
+- **DoD:** `cargo check -p bode-core` green; trait is `dyn`-compatible (object-safe)
+
+### Story I2 — Implement trait in `bode-db`
+- **I2.1** Move current `load_auth_user` body into `PgUserRepository` struct in `bode-db/src/repositories/user.rs`
+- **I2.2** `impl UserRepository for PgUserRepository`
+- **I2.3** Constructor takes `PgPool`
+- **DoD:** Existing tests pass against new `PgUserRepository`
+
+### Story I3 — Wire via `Arc<dyn UserRepository>` in `AppState`
+- **I3.1** `AppState` field changes from concrete to `Arc<dyn UserRepository>`
+- **I3.2** `main.rs` constructs `Arc::new(PgUserRepository::new(pool))` and injects
+- **I3.3** Auth middleware reads from state via trait
+- **DoD:** All routes work end-to-end via trait dispatch; integration test green
+
+### Story I4 — Update `TECH_DEBT.md` and ADR-009
+- **I4.1** Move TD-002 from "Active" to "Resolved" in `TECH_DEBT.md`
+- **I4.2** Add validation note in ADR-BODE-009 (zero vendor lock-in) — abstraction now proven
+
+---
+
 ## Open questions for André
 
-1. **Supabase staging tier:** Free (limited 500MB, 2 projects) or Pro ($25/mo, ~unlimited)? Free likely too small to mirror prod data realistically.
-2. **Staging DB seed strategy:** anonymized subset of prod, fully synthetic, or start empty and accept "thin" homolog testing initially?
-3. **Alert routing:** email only, Slack webhook (where?), Telegram bot?
-4. **release-please scope:** version the whole workspace as one bumped version (recommended for app-style projects), or per-crate (more npm-style)?
-5. **Cosign keystore:** GitHub Secrets only (simplest), or KMS (AWS/Hashi Vault — overkill now)?
+1. **Staging DB seed strategy** (D1 revised — DB now self-hosted on VPS): anonymized subset of prod via dump+scrub, fully synthetic via factories, ou começa vazio e aceita "thin" homolog testing inicialmente?
+2. **Alert routing:** email só, Slack webhook (qual workspace?), Telegram bot?
+3. **release-please scope:** workspace versionado como um (recomendado pra app-style), per-crate (npm-style)?
+4. **Cosign keystore:** GitHub Secrets (simples) ou KMS (overkill agora)?
 
 ## What this plan does NOT cover (out of scope for Phase 2)
 
 - RBAC implementation (Epic #8 — separate phase)
 - Migration of legacy /api/* routes to /api/v2/* (Strangler Fig — ongoing per-feature)
-- Tech debt items in `docs/TECH_DEBT.md` (TD-001 pagination, TD-002 DI traits)
+- Outros tech debt items em `docs/TECH_DEBT.md` (TD-001 paginação, TD-003 tarpaulin) — TD-002 PROMOVIDO pra Epic I deste plano
+- **Frontend / capra-ui improvements** — workstream separado, ver `[[capra-ui Improvements Plan]]` (placeholder)
+- **Self-hosted DB + auth migration end-to-end (Eixo 2 completo)** — fase futura. Phase 2 só ENCAIXA AS FUNDAÇÕES (Epic A2 staging em Postgres VPS, Epic I trait abstractions)
 
 ## Acceptance for "Phase 2 complete"
 
@@ -251,4 +293,5 @@ A and B are independent prerequisites. C depends on both. D depends on A+B+C. E 
 - [ ] All deployed images signed and verified (F)
 - [ ] Releases versioned and CHANGELOG generated automatically (G)
 - [ ] Outage in homolog or prod alerts within 2min (H1)
+- [ ] Repository abstractions resolved (I, TD-002 → Resolved)
 - [ ] All 6 ADRs (011-016) accepted and merged

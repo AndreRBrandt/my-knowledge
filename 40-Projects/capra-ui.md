@@ -70,3 +70,6 @@ pnpm test                                 # vitest
 - Services (ActionBus, FilterManager, QueryManager) implementados; FilterManager não-usado pelo app ainda (ADR-UI-009 deferiu)
 - Theme system com dark mode (`[data-theme]`)
 - Migração contínua para framework-first (eliminação progressiva de violações AP-14/15/16)
+
+## Roadmap
+- 📋 `[[capra-ui Improvements Plan]]` (PLACEHOLDER) — workstream futuro de melhoria + documentação do framework. Aciona quando bode-api Phase 2 estiver em Sprint 3+ ou houver demanda de produto.
