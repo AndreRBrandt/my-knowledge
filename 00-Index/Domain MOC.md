@@ -8,31 +8,29 @@ created: 2026-04-15
 
 > Conhecimento de negócio **agnóstico de projeto**. Conceitos, entidades, regras de domínio.
 
-## Áreas
+## Data Domains (marts dbt)
+Cada domain corresponde a um mart em `capra-dbt/models/marts/`:
 
-_(nenhuma área criada ainda — adicione conforme popular 10-Domain/)_
+- `[[Core (dbt)]]` — dimensões compartilhadas (dim_filial)
+- `[[Vendas (dbt)]]` — transações, itens, cancelamentos
+- `[[Financeiro (dbt)]]` — AP, AR, fluxo, caixa
+- `[[CMV (dbt)]]` — custo mercadoria vendida (ficha técnica)
+- `[[Avaliacoes (dbt)]]` — feedback clientes (Avalyo, Wifire)
+- `[[RH (dbt)]]` — people analytics (banco de horas, escalas)
+- `[[Estoque (dbt)]]` — **não implementado ainda**
 
-<!--
-Exemplo de como crescer:
+## Foodservice (a migrar)
+- Filial (9 filiais, códigos 0001-0009)
+- Unidades (BDN, Burguer, Italiano)
+- PDV, Turnos
 
-## Foodservice
-- [[Filial]]
-- [[Cardápio]]
-- [[Faturamento]]
-
-## Permissions
-- [[RBAC Model]]
-- [[Role]]
-- [[Permission]]
-
-## Users
-- [[User]]
-- [[Session]]
--->
+## Permissions (a migrar do bode-api)
+- RBAC Model
+- Role, Permission
 
 ## Glossário
-- _(a criar)_
+- _(a criar: consolidar GLOSSARIO_GLOBAL + específicos)_
 
 ---
 
-Template: [[Concept]]
+Template: `[[Concept]]`
