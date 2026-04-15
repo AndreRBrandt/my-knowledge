@@ -14,12 +14,12 @@ created: 2026-04-15
 - `[[capra-dbt]]` — dbt project (raw → staging → intermediate → marts)
 
 ### Backend
-- _(a migrar)_ bode-api — Rust backend (em construção, substitui TS)
+- `[[bode-api]]` — Rust backend (Axum + sqlx). Em construção, substitui TS via Strangler Fig.
 - _(a migrar)_ bode-analytics-api — TS backend (legado, sendo substituído)
 
 ### Frontend
-- _(a migrar)_ capra-ui — framework Vue 3 pra dashboards
-- _(a migrar)_ capra-analytics — dashboard app (usa capra-ui)
+- `[[capra-ui]]` — framework Vue 3 (`@capra-ui/core`), public
+- _(a migrar)_ capra-analytics — dashboard app que consome capra-ui
 
 ### Ingestion
 - _(a migrar)_ teknisa-crawler — extração API Teknisa

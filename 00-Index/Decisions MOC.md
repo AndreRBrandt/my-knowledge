@@ -10,7 +10,14 @@ created: 2026-04-15
 
 ## Global (GADRs — cross-project)
 
-_(a migrar — 7 GADRs de `bi_projects/docs/contexto/DECISOES_GLOBAIS.md`)_
+- `[[GADR-001 Strangler Fig TS to Rust Migration]]` — direção de migração workspace
+- `[[GADR-002 Trunk-Based Development]]` — feature → main → tag → prod (squash merge)
+- `[[GADR-003 Conventional Commits]]` — `type(scope): description` por projeto
+- `[[GADR-004 Spec-Driven Workflow with Consultant LLM]]` — André lidera, LLM consultora
+- `[[GADR-005 Framework-First UI Development]]` — app nunca sobrescreve framework
+- `[[GADR-006 VPS as Stepping Stone Before Cloud]]` — DigitalOcean antes de cloud gerenciada
+- `[[GADR-007 No SQL in Client]]` — toda query passa pela API server-side
+- `[[GADR-008 BIMachine Deprecation]]` — substituição completa pelo stack próprio
 
 ## bode-api (Rust backend)
 
@@ -27,29 +34,42 @@ _(a migrar — 7 GADRs de `bi_projects/docs/contexto/DECISOES_GLOBAIS.md`)_
 
 ## capra-ui (Vue frontend framework)
 
-_(a migrar — ~15 ADRs ativas, pular 005/007/009/017 obsoletos)_
+- `[[ADR-UI-001 Adapter Pattern]]` — abstração de fonte de dados
+- `[[ADR-UI-002 Component Categories]]` — UI / Containers / Analytics / Layout
+- `[[ADR-UI-003 Interaction System]]` — ações declarativas (filter, modal, drawer, ...)
+- `[[ADR-UI-004 Action Bus]]` — Command Queue centralizado
+- `[[ADR-UI-005 Schema Builder]]` — fluent + registry + factories
+- `[[ADR-UI-006 Measures and Transforms]]` — MeasureEngine declarativo
+- `[[ADR-UI-007 Generic Composables]]` — useAnalyticData, useDrillStack, useTableState
+- `[[ADR-UI-008 Filter Registry]]` — multi-schema bindings (proposed)
+- `[[ADR-UI-009 Phase 3 Service Integration]]` — bridge useDataService + executeRaw
+- `[[ADR-UI-010 Theme System]]` — `[data-theme]` + tokens
+- `[[ADR-UI-011 Domain Containers]]` — KpiContainer / DataTableContainer / ChartContainer
+- `[[ADR-UI-012 Dimension Discovery]]` — membros OLAP dinâmicos via MDX
+- `[[ADR-UI-013 Data Loading Patterns]]` — executeAllSettled vs usePageDataLoader
+- `[[ADR-UI-014 App Query Conventions]]` — period helpers + WHERE conventions
+- `[[ADR-UI-015 Dependency Boundaries]]` — core ↔ app rules + Teste do Segundo Consumidor
+- `[[ADR-UI-016 KPI Grid Layout]]` — `auto-fit` + `minmax` + token cascade
+- `[[ADR-UI-017 Endpoint Schema Discovery]]` — plug-and-play schema (proposed)
+- `[[ADR-UI-018 Design Token Enforcement]]` — zero hex hardcoded
+- `[[ADR-UI-019 Framework First Visual Ownership]]` — design system contract
 
 ## capra-dbt
 
-_(a migrar — decisões sobre pipeline de dados)_
+_(decisões implícitas no `[[dbt Architecture]]` e `[[Medallion Architecture]]` — sem ADRs formais ainda)_
 
 ## Superseded
 
-_(vazio — ADRs substituídas ficam aqui quando aplicável)_
+_(vazio)_
 
 ---
 
 ## Sobre ADRs
 
-Uma ADR captura:
-1. **Context** — situação e restrições
-2. **Decision** — o que foi decidido
-3. **Consequences** — positivo, negativo, riscos
-4. **Alternatives Considered** — opções descartadas e por quê
-
+Uma ADR captura: Context / Decision / Consequences / Alternatives.
 Template: `[[Decision]]`
 
 Naming:
-- `ADR-BODE-NNN` — decisões do bode-api
-- `ADR-UI-NNN` — decisões do capra-ui
-- `GADR-NNN` — decisões globais cross-project
+- `ADR-BODE-NNN` — bode-api
+- `ADR-UI-NNN` — capra-ui
+- `GADR-NNN` — global cross-project

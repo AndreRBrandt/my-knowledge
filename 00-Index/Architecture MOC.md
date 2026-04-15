@@ -25,12 +25,22 @@ created: 2026-04-15
 - `[[Request ID Propagation]]` — x-request-id end-to-end
 
 ## Frontend (capra-ui)
-- _(a migrar)_ Adapter Pattern — abstração de fonte de dados
-- _(a migrar)_ Action Bus — pub/sub entre componentes
-- _(a migrar)_ Component Categories — analytic/layout/ui
+- `[[Adapter Pattern (UI Layer)]]` — tradução UI ↔ fonte de dados
+- `[[Action Bus]]` — Command Queue + managers (Filter/Query/State)
+- `[[Schema Builder]]` — fluent + registry + factories
+- `[[Measure Engine]]` — calculators + transforms + formatters declarativos
+- `[[Filter Registry]]` — multi-schema bindings
+- `[[Theme System]]` — `[data-theme]` + tokens overrideable
+- `[[Domain Containers]]` — 3-camada (page → container → primitivos)
+- `[[Dimension Discovery]]` — descoberta dinâmica de membros via MDX
+- `[[Component Categories (UI vs Containers vs Analytics)]]` — DAG de imports
+- `[[Interaction System]]` — ações declarativas em componentes analíticos
+- `[[Generic Composables Layer]]` — useAnalyticData, useDrillStack, useTableState
+- `[[Data Loading Patterns]]` — partial failure local > total failure
 
 ## Cross-cutting
-- _(a migrar)_ Hub Pattern — CLAUDE.md + docs/contexto/ (GADR-001)
+- `[[Framework-First Visual Ownership]]` — app não sobrescreve visual do framework
+- `[[Core vs App Dependency Boundaries]]` — regra de import unidirecional + Teste do Segundo Consumidor
 
 ---
 

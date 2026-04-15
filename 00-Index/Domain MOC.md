@@ -8,6 +8,21 @@ created: 2026-04-15
 
 > Conhecimento de negócio **agnóstico de projeto**. Conceitos, entidades, regras de domínio.
 
+## Organização
+- `[[Filial]]` — unidade operacional (loja física)
+- `[[Empresa]]` — agrupamento por marca/CNPJ (Bode do Nô / Burguer do Nô)
+
+## RBAC (controle de acesso)
+- `[[Roles]]` — papéis (`adm`, `diretor`, `gestor_filial`)
+- `[[Permissions]]` — catálogo + valores com `level` (maior = mais restritivo)
+- `[[User Permissions Override]]` — sobrescrita restritiva por usuário
+- `[[RBAC Cascade Model]]` — modelo mental completo (JWT → AuthUser)
+
+## Business Rules
+- `[[Faturamento Calculation]]` — `SUM(vr_total_item)`, NUNCA somar gorjeta separadamente
+- `[[Comparison Layers (3-tier)]]` — YoY + Short-term + MA4
+- `[[Trend Inversion]]` — métricas onde queda = bom (custos, reclamações)
+
 ## Data Domains (marts dbt)
 Cada domain corresponde a um mart em `capra-dbt/models/marts/`:
 
@@ -19,17 +34,8 @@ Cada domain corresponde a um mart em `capra-dbt/models/marts/`:
 - `[[RH (dbt)]]` — people analytics (banco de horas, escalas)
 - `[[Estoque (dbt)]]` — **não implementado ainda**
 
-## Foodservice (a migrar)
-- Filial (9 filiais, códigos 0001-0009)
-- Unidades (BDN, Burguer, Italiano)
-- PDV, Turnos
-
-## Permissions (a migrar do bode-api)
-- RBAC Model
-- Role, Permission
-
 ## Glossário
-- _(a criar: consolidar GLOSSARIO_GLOBAL + específicos)_
+- `[[Glossary (consolidated)]]` — vocabulário cross-project (organização, RBAC, pipeline, métricas, stack, BIMachine legacy, workflow)
 
 ---
 
