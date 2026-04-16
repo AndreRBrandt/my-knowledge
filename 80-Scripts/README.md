@@ -78,15 +78,35 @@ Exemplo: "daily sales report", "monthly ops summary".
 - **Output esperado está documentado** — facilita validar que rodou certo
 - **Scripts que MUTAM precisam warning explícito** no When to use
 
+## Guias (patterns genéricos)
+
+- `[[GUIDE-data-extraction]]` — **como a IA monta scripts de extração**. Patterns (QueryRunner, Webtoken, incremental), anatomia, checklist. Aplicável a qualquer projeto.
+
 ## Script Template
 
 Use `[[Script]]` em 70-Templates ao criar novo.
+
+## Inventário atual
+
+### data-queries/ (consulta, read-only)
+- `[[list-active-filiais]]` — filiais ativas do grupo
+- `[[teknisa-query-runner]]` — SQL direto no Oracle Teknisa
+- `[[teknisa-fetch-csv]]` — download API Teknisa → CSV local
+
+### operations/ (mutação)
+- `[[dbt-refresh]]` — rodar dbt refresh incremental
+- `[[teknisa-load-supabase]]` — carga Oracle → Supabase raw (dia a dia)
+- `[[teknisa-sync-trigger]]` — trigger das 50+ rotas de sync automático
+
+### diagnostics/ (investigação)
+- `[[check-vps-health]]` — saúde dos containers VPS
 
 ## Source of truth
 
 Scripts aqui são **documentação + invocação** de código que vive nos repos:
 - `capra-workspace/scripts/` — ops scripts (Node.js)
 - `capra-workspace/capra-dbt/` — dbt models
+- `projects_script/teknisa_crawler/` — Python QueryRunner + auth
 - Projetos individuais — scripts específicos
 
 O vault descreve **como usar**; os repos têm **o código**.
