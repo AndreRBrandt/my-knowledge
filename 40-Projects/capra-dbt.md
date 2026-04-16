@@ -27,9 +27,9 @@ Marts implementados em `models/marts/`:
 
 | Domain | Status | Notas |
 |--------|--------|-------|
-| `[[Core (dbt)]]` | Ativo | dim_filial compartilhada |
-| `[[Vendas (dbt)]]` | Ativo | fct_vendas_diario, obt_cancelamentos, obt_vendas_item |
-| `[[Financeiro (dbt)]]` | Ativo | 5 modelos (contas, fluxo, obt) |
+| `[[Core (dbt)]]` | Ativo | dim_filial, dim_produto, dim_operador |
+| `[[Vendas (dbt)]]` | Ativo | obt_vendas_item, fct_vendas_diario, fct_vendas_hora, obt_cancelamentos |
+| `[[Financeiro (dbt)]]` | Ativo | obt_financeiro (c/ operador), obt_fechamento_caixa, contas, fluxo |
 | `[[CMV (dbt)]]` | Ativo | fct_cmv_diario, ficha_tecnica, produto_diario |
 | `[[Avaliacoes (dbt)]]` | Ativo | detalhe + resumo |
 | `[[RH (dbt)]]` | Ativo | obt_rh_diario (em expansão) |
@@ -49,13 +49,14 @@ Marts implementados em `models/marts/`:
 - **Script:** `capra-workspace/scripts/ops/commands/dbt-refresh.mjs`
 - **Função runtime:** `refresh_gold_incremental(days)` no Postgres
 
-## Ingestion (projetos relacionados)
+## Data Sources & Ingestion
 
-dbt não faz ingestão, só transformação. Ingestão fica em:
-- `[[teknisa-crawler]]` — API Teknisa
-- `[[ifood-crawler]]` — API iFood
-- `[[SugestCard]]` — (escopo específico)
-- PontoMais — refatoração pendente (ver `_legacy_reference/rh_pontomais_gold_layer/`)
+dbt não faz ingestão, só transformação. Fontes e cargas:
+- `[[Teknisa Oracle Data Map]]` — mapeamento completo de tabelas/relacionamentos/PKs
+- `[[Data Pipeline Status]]` — estado de cada tabela (fresh, stale, gaps)
+- `[[teknisa-crawler]]` — API Teknisa (QueryRunner + Webtoken)
+- PontoMais — 13 tabelas RH sincronizadas
+- Avalyo / Wifire — reviews e NPS externos
 
 ## Active Work
 - (nenhuma sessão registrada ainda)
